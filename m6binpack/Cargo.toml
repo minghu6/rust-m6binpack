@@ -1,0 +1,14 @@
+[package]
+name = "m6binpack"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+
+[dependencies.procmacro]
+package = "m6binpack-procmacro"
+path = "src/proc_macro"
+version = "0.1.0"  # Same as main
+
+[workspace]
+members = ["src/proc_macro"]

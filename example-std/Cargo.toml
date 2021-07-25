@@ -1,0 +1,9 @@
+[package]
+name = "example-std"
+version = "0.1.0"
+edition = "2018"
+
+# STD VERSION
+
+[dependencies]
+m6binpack = { path = "../m6binpack" }
