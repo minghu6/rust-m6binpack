@@ -1,15 +1,10 @@
 #![cfg_attr(not(test), no_std)]
 
-use core::mem::{
-    size_of
-};
-
+use core::mem::size_of;
 
 extern crate procmacro; /* to avoid a cargo bug when cross-compiling (e.g. wasm) */
 
-pub use procmacro::{
-    unpack
-};
+pub use procmacro::unpack;
 
 pub static POINTER_WIDTH: usize = size_of::<usize>();
 
@@ -28,7 +23,6 @@ pub fn extract_bits(target: usize, bitstart: usize, bitlen: usize) -> usize {
     (target & mask) >> bitstart
 }
 
-
 #[cfg(test)]
 mod test {
     #[test]
@@ -42,6 +36,5 @@ mod test {
 
         assert_eq!(res0, 1);
         assert_eq!(res1, 10);
-
     }
 }

@@ -1,12 +1,7 @@
 use proc_macro::TokenStream;
-use syn::parse::{
-    Parse, ParseStream
-};
-use syn:: {
-    Ident, LitInt, Token, Type, parse_macro_input
-};
 use quote::{format_ident, quote};
-
+use syn::parse::{Parse, ParseStream};
+use syn::{parse_macro_input, Ident, LitInt, Token, Type};
 
 extern crate proc_macro;
 #[macro_use]
@@ -43,22 +38,16 @@ impl Parse for BinUnPackUsize {
             let target = input.parse()?;
             input.parse::<Token![;]>()?;
 
-            vars_vec.push(
-                BinUnpackItem(vars, target)
-            )
+            vars_vec.push(BinUnpackItem(vars, target))
         }
 
-        Ok(Self {
-            vars_vec
-        })
+        Ok(Self { vars_vec })
     }
 }
 
 #[proc_macro]
 pub fn unpack(input: TokenStream) -> TokenStream {
-    let BinUnPackUsize {
-        vars_vec
-    } = parse_macro_input!(input as BinUnPackUsize);
+    let BinUnPackUsize { vars_vec } = parse_macro_input!(input as BinUnPackUsize);
 
     let mut token_stream = quote! {};
     token_stream.extend(quote! {
@@ -72,40 +61,36 @@ pub fn unpack(input: TokenStream) -> TokenStream {
         token_stream.extend(quote! {
             _lensum = 0;
         });
-    for BitVar(varname, vartype, bitlen) in vars {
-        let tmpvar = format_ident!("_tmp_{}", varname);
 
-        token_stream.extend(quote! {
-            let #tmpvar: usize = extract_bits(#target, _lensum, #bitlen);
-        });
+        for BitVar(varname, vartype, bitlen) in vars {
+            let tmpvar = format_ident!("_tmp_{}", varname);
 
-        match vartype {
-            // >=1 true, == 0 false
-            Type::Path(type_path) if type_path.path.is_ident("bool") => {
-                token_stream.extend(quote! {
-                    let #varname = #tmpvar >= 1;
-                });
-            },
-            _ => {
-                token_stream.extend(quote! {
-                    let #varname = #tmpvar as #vartype;
-                });
+            token_stream.extend(quote! {
+                #[allow(non_snake_case)]
+                let #tmpvar: usize = extract_bits(#target, _lensum, #bitlen);
+            });
+
+            match vartype {
+                // >=1 true, == 0 false
+                Type::Path(type_path) if type_path.path.is_ident("bool") => {
+                    token_stream.extend(quote! {
+                        #[allow(non_snake_case)]
+                        let #varname = #tmpvar >= 1;
+                    });
+                }
+                _ => {
+                    token_stream.extend(quote! {
+                        #[allow(non_snake_case)]
+                        let #varname = #tmpvar as #vartype;
+                    });
+                }
             }
-        }
 
-        token_stream.extend(quote! {
-            _lensum += #bitlen;
-        });
-    }}
+            token_stream.extend(quote! {
+                _lensum += #bitlen;
+            });
+        }
+    }
 
     TokenStream::from(token_stream)
-}
-
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
 }
