@@ -19,7 +19,7 @@ pub use m6binpack:: unpack;
 
 #[entry]
 fn main() -> ! {
-    hprintln!("Hello, world!").unwrap();
+    hprintln!("Hello, ArmV7 !").unwrap();
     hprintln!("pointer width: {}", size_of::<usize>() * 8).unwrap();
 
     #[cfg(target_pointer_width = "64")]

@@ -6,10 +6,10 @@
 提供一种灵活的解包 bit 数据的方法，更正式地比如 [bitflags](https://github.com/bitflags/bitflags) 需要定义专门的结构体。
 
 ```rust
-let test_num = 0x8000_0000_0000_000A;
+let test_num = 0x8000_0000_0000_000A_u64;
 
-let res0 = extract_bits(test_num, 63, 1);
-let res1 = extract_bits(test_num, 0, 12);
+let res0 = Unpack::extract(&test_num, 64..=64);
+let res1 = Unpack::extract(&test_num, 1..=12);
 
 assert_eq!(res0, 1);
 assert_eq!(res1, 10);
