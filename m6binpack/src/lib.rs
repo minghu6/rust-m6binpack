@@ -32,7 +32,7 @@ macro_rules! impl_for_uint {
                 if e == t {
                     mask = <$uint>::MAX;
                 } else {
-                    mask = (1 << (e-1)) - 1;
+                    mask = (1 << e) - 1;
                 }
 
                 (self & mask) >> (s-1)
@@ -65,10 +65,10 @@ pub trait Unpack<T> {
     /// msb0
     fn extract_msb(&self, range: RangeInclusive<usize>) -> T {
         let t = size_of::<T>() * 8;
+        let s = *range.start();
         let e = *range.end();
-        let s = *range.end();
 
-        self.extract(t - e..=t - s)
+        self.extract(t - e + 1..=t - s + 1)
     }
 }
 
