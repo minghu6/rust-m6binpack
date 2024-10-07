@@ -38,6 +38,29 @@ macro_rules! impl_for_uint {
                 (self & mask) >> (s-1)
             }
         }
+
+        impl Pack<$uint> for $uint {
+            fn insert(&mut self, v: $uint, range: RangeInclusive<usize>) {
+                let t = size_of::<$uint>() * 8;
+                let s = *range.start();
+                let e = *range.end();
+
+                debug_assert!(s > 0);
+                debug_assert!(e > 0);
+                debug_assert!(s <= t);
+                debug_assert!(e <= t);
+
+                let mask;
+
+                if e == t {
+                    mask = <$uint>::MAX;
+                } else {
+                    mask = (1 << e) - 1;
+                }
+
+                *self |= (v & mask)
+            }
+        }
     };
     ($($uint:ty),*) => {
         $(
@@ -69,6 +92,20 @@ pub trait Unpack<T> {
         let e = *range.end();
 
         self.extract(t - e + 1..=t - s + 1)
+    }
+}
+
+pub trait Pack<T> {
+    /// default lsb0 radix 1
+    fn insert(&mut self, v: T, range: RangeInclusive<usize>);
+
+    /// msb0
+    fn insert_msb(&mut self, v: T, range: RangeInclusive<usize>) {
+        let t = size_of::<T>() * 8;
+        let s = *range.start();
+        let e = *range.end();
+
+        self.insert(v, t - e + 1..=t - s + 1)
     }
 }
 
