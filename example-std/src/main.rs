@@ -1,6 +1,6 @@
 extern crate m6binpack;
 
-pub use m6binpack::unpack;
+pub use m6binpack::{ unpack, Unpack };
 
 fn main() {
     let cause: u64 = 0x8000_0000_0000_000A;

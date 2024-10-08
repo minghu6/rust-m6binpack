@@ -3,7 +3,7 @@ use proc_macro2::Span;
 use quote::{format_ident, quote};
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, Ident, LitInt, Token, Type,
+    parse_macro_input, Expr, Ident, LitInt, Token, Type,
 };
 
 extern crate proc_macro;
@@ -72,10 +72,7 @@ enum PackItem {
     AddAssign(Ident, Vec<PackVar>),
 }
 
-enum PackVar {
-    Var(Ident, LitInt),
-    Lit(LitInt, LitInt),
-}
+struct PackVar(Expr, LitInt);
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Implementations
@@ -83,25 +80,15 @@ enum PackVar {
 /// <_: intlit>
 impl Parse for PackVar {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        Ok(if input.peek2(Ident) {
-            input.parse::<Token![<]>()?;
+        input.parse::<Token![<]>()?;
 
-            let name = input.parse::<Ident>()?;
-            let bitlen = input.parse::<LitInt>()?;
+        let expr = input.parse::<Expr>()?;
+        input.parse::<Token![:]>()?;
+        let bitlen = input.parse::<LitInt>()?;
 
-            input.parse::<Token![>]>()?;
+        input.parse::<Token![>]>()?;
 
-            Self::Var(name, bitlen)
-        } else {
-            input.parse::<Token![<]>()?;
-
-            let lit = input.parse::<LitInt>()?;
-            let bitlen = input.parse::<LitInt>()?;
-
-            input.parse::<Token![>]>()?;
-
-            Self::Lit(lit, bitlen)
-        })
+        Ok(Self(expr, bitlen))
     }
 }
 
@@ -119,7 +106,7 @@ impl Parse for PackItemList {
 
                 let mut vars = vec![];
 
-                while !input.peek(Token![;]) {
+                while !input.peek(Token![;]) && !input.is_empty() {
                     vars.push(input.parse::<PackVar>()?);
                 }
 
@@ -162,8 +149,7 @@ impl Parse for UnPackItemList {
                     let vartype: Type = input.parse()?;
 
                     Some((varname_, vartype))
-                }
-                else {
+                } else {
                     // eprintln!("varname_: None");
                     input.parse::<Token![_]>()?;
                     None
@@ -199,6 +185,14 @@ fn unpack_(input: TokenStream, lsb: bool) -> TokenStream {
 
     let mut ts = quote! {};
 
+    let func_name;
+
+    if lsb {
+        func_name = Ident::new("extract", Span::call_site());
+    } else {
+        func_name = Ident::new("extract_msb", Span::call_site());
+    }
+
     for UnpackItem(vars, target) in item_list {
         ts.extend(quote! {
             let mut _lensum = 0usize;
@@ -208,21 +202,12 @@ fn unpack_(input: TokenStream, lsb: bool) -> TokenStream {
             if let Some((varname, vartype)) = var {
                 let tmpvar = format_ident!("_tmp_{}", varname);
 
-                if lsb {
-                    ts.extend(quote! {
-                        #[allow(non_snake_case)]
-                        let #tmpvar = m6binpack::Unpack::extract(
-                            &#target, _lensum + 1..=_lensum + #bitlen
-                        );
-                    });
-                } else {
-                    ts.extend(quote! {
-                        #[allow(non_snake_case)]
-                        let #tmpvar = m6binpack::Unpack::extract_msb(
-                            &#target, _lensum + 1..=_lensum + #bitlen
-                        );
-                    });
-                }
+                ts.extend(quote! {
+                    #[allow(non_snake_case)]
+                    let #tmpvar = Unpack::#func_name(
+                        &#target, _lensum + 1..=_lensum + #bitlen
+                    );
+                });
 
                 match vartype {
                     // >=1 true, == 0 false
@@ -290,29 +275,15 @@ fn pack_item_addassign(target: Ident, vars: Vec<PackVar>, lsb: bool) -> proc_mac
         func_name = Ident::new("insert", Span::call_site());
     }
 
-    for var in vars {
-        match var {
-            PackVar::Var(name, bitlen) => {
-                ts.extend(quote! {
-                    m6binpack::Pack::#func_name(
-                        &mut #target,
-                        #name,
-                        _lensum..=_lensum + #bitlen - 1
-                    );
-                    _lensum += #bitlen;
-                });
-            }
-            PackVar::Lit(name, bitlen) => {
-                ts.extend(quote! {
-                    m6binpack::Pack::#func_name(
-                        &mut #target,
-                        #name,
-                         _lensum..=_lensum + #bitlen - 1
-                    );
-                    _lensum += #bitlen;
-                });
-            }
-        }
+    for PackVar(val, bitlen) in vars {
+        ts.extend(quote! {
+            Pack::#func_name(
+                &mut #target,
+                #val,
+                _lensum..=_lensum + #bitlen - 1
+            );
+            _lensum += #bitlen;
+        });
     }
 
     ts

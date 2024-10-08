@@ -7,7 +7,7 @@ use core::{
 
 extern crate procmacro; /* to avoid a cargo bug when cross-compiling (e.g. wasm) */
 
-pub use procmacro::unpack;
+pub use procmacro::*;
 
 pub static POINTER_WIDTH: usize = size_of::<usize>();
 
