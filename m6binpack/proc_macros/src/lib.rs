@@ -15,13 +15,21 @@ extern crate alloc;
 
 /// LSB parsing
 ///
-/// ```no_run
-/// let cause: usize = 0x8000_0000_0000_000A;
+/// ```
+/// use proc_macros::unpack;
+/// use m6binpack::Unpack;
+///
+/// let cause: u32 = 0x8000_000A;
 ///
 /// unpack! {
-///     <cause_num: usize: 63><is_async: bool: 1> = cause;
-///     <B0: usize: 12><B1: u8: 4><B2: u8: 8> = cause;
+///     <cause_num: usize: 31><is_async: bool: 1> = cause;
+///     <B0: usize: 12><_: 12><B1: u8: 8> = cause;
 /// };
+///
+/// assert_eq!(cause_num, 0x0A);
+/// assert_eq!(is_async, true);
+/// assert_eq!(B0, 0x0A);
+/// assert_eq!(B1, 8 << 4);
 /// ```
 #[proc_macro]
 pub fn unpack(input: TokenStream) -> TokenStream {
@@ -36,14 +44,24 @@ pub fn unpack_msb(input: TokenStream) -> TokenStream {
 
 /// LSB packing
 ///
-/// ```no_run
-/// let cause_num = 0x8000_0000_0000_000A;
+/// ```
+/// use proc_macros::pack;
+/// use m6binpack::Pack;
+///
+/// let cause_num = 0x8000_000A;
 /// let is_async = 1;
 ///
 /// pack! {
-///     cause0: u64 = <cause_num: 63><is_async: 1>;
-///     cause0 += <4: 12><3: 4><0: 40><2: 8>;
+///     cause0: u32 = <cause_num: 31><is_async: 1>;
 /// };
+///
+/// assert_eq!(cause0, 0x8000_000A);
+///
+/// pack! {
+///     cause0 |= <4: 12><0: 12><0x02: 8>
+/// }
+///
+/// assert_eq!(cause0, 0x8200_000E, "{cause0:0X}");
 /// ```
 #[proc_macro]
 pub fn pack(input: TokenStream) -> TokenStream {
@@ -112,11 +130,11 @@ impl Parse for PackItemList {
 
                 item_list.push(PackItem::Init(name, ty, vars));
             } else {
-                input.parse::<Token![+=]>()?;
+                input.parse::<Token![|=]>()?;
 
                 let mut vars = vec![];
 
-                while !input.peek(Token![;]) {
+                while !input.peek(Token![;]) && !input.is_empty() {
                     vars.push(input.parse::<PackVar>()?);
                 }
 
@@ -142,7 +160,8 @@ impl Parse for UnPackItemList {
             while !input.peek(Token![=]) {
                 input.parse::<Token![<]>()?;
 
-                let var = if let Some(varname_) = input.parse::<Option<Ident>>()? {
+                let var = if let Some(varname_) =
+                input.parse::<Option<Ident>>()? {
                     // eprintln!("varname_: {}", varname_.to_string());
                     input.parse::<Token![:]>()?;
 
@@ -270,9 +289,9 @@ fn pack_item_addassign(target: Ident, vars: Vec<PackVar>, lsb: bool) -> proc_mac
     let func_name;
 
     if lsb {
-        func_name = Ident::new("insert_msb", Span::call_site());
-    } else {
         func_name = Ident::new("insert", Span::call_site());
+    } else {
+        func_name = Ident::new("insert_msb", Span::call_site());
     }
 
     for PackVar(val, bitlen) in vars {
@@ -280,7 +299,7 @@ fn pack_item_addassign(target: Ident, vars: Vec<PackVar>, lsb: bool) -> proc_mac
             Pack::#func_name(
                 &mut #target,
                 #val,
-                _lensum..=_lensum + #bitlen - 1
+                _lensum + 1..=_lensum + #bitlen
             );
             _lensum += #bitlen;
         });

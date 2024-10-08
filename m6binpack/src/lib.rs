@@ -5,9 +5,9 @@ use core::{
     ops::RangeInclusive,
 };
 
-extern crate procmacro; /* to avoid a cargo bug when cross-compiling (e.g. wasm) */
+extern crate proc_macros; /* to avoid a cargo bug when cross-compiling (e.g. wasm) */
 
-pub use procmacro::*;
+pub use proc_macros::*;
 
 pub static POINTER_WIDTH: usize = size_of::<usize>();
 
@@ -58,7 +58,7 @@ macro_rules! impl_for_uint {
                     mask = (1 << e) - 1;
                 }
 
-                *self |= (v & mask)
+                *self |= ((v << (s-1)) & mask)
             }
         }
     };
