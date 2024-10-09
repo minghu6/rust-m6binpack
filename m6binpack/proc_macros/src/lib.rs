@@ -1,9 +1,11 @@
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use quote::{format_ident, quote};
+use quote::{format_ident, quote, ToTokens};
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input, Expr, Ident, LitInt, Token, Type,
+    parse_macro_input,
+    token::Brace,
+    ExprBlock, Ident, LitInt, Token, Type,
 };
 
 extern crate proc_macro;
@@ -31,6 +33,7 @@ extern crate alloc;
 /// assert_eq!(B0, 0x0A);
 /// assert_eq!(B1, 8 << 4);
 /// ```
+
 #[proc_macro]
 pub fn unpack(input: TokenStream) -> TokenStream {
     unpack_(input, true)
@@ -76,8 +79,14 @@ pub fn pack_msb(input: TokenStream) -> TokenStream {
 ////////////////////////////////////////////////////////////////////////////////
 //// Structures
 
+enum Val {
+    ExprBlock(ExprBlock),
+    LitInt(LitInt),
+    Ident(Ident),
+}
+
 /// <VarName: VarType: bitlen>
-struct UnpackVar(Option<(Ident, Type)>, LitInt);
+struct UnpackVar(Option<(Ident, Type)>, Val);
 
 struct UnpackItem(Vec<UnpackVar>, Ident);
 
@@ -90,23 +99,50 @@ enum PackItem {
     AddAssign(Ident, Vec<PackVar>),
 }
 
-struct PackVar(Expr, LitInt);
+struct PackVar(Val, Val);
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Implementations
+
+impl Parse for Val {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(if input.peek(Brace) {
+            Val::ExprBlock(input.parse()?)
+        }
+        else if input.peek(Ident) {
+            Val::Ident(input.parse()?)
+        }
+        else {
+            Val::LitInt(input.parse()?)
+        })
+    }
+}
+
+impl ToTokens for Val {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let totokens: &dyn ToTokens = match self {
+            Val::ExprBlock(expr_block) => expr_block,
+            Val::LitInt(lit_int) => lit_int,
+            Val::Ident(ident) => ident,
+        };
+
+        totokens.to_tokens(tokens);
+    }
+}
+
 
 /// <_: intlit>
 impl Parse for PackVar {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         input.parse::<Token![<]>()?;
 
-        let expr = input.parse::<Expr>()?;
+        let val = input.parse::<Val>()?;
         input.parse::<Token![:]>()?;
-        let bitlen = input.parse::<LitInt>()?;
+        let bitlen = input.parse::<Val>()?;
 
         input.parse::<Token![>]>()?;
 
-        Ok(Self(expr, bitlen))
+        Ok(Self(val, bitlen))
     }
 }
 
@@ -160,8 +196,7 @@ impl Parse for UnPackItemList {
             while !input.peek(Token![=]) {
                 input.parse::<Token![<]>()?;
 
-                let var = if let Some(varname_) =
-                input.parse::<Option<Ident>>()? {
+                let var = if let Some(varname_) = input.parse::<Option<Ident>>()? {
                     // eprintln!("varname_: {}", varname_.to_string());
                     input.parse::<Token![:]>()?;
 
@@ -175,7 +210,7 @@ impl Parse for UnPackItemList {
                 };
 
                 input.parse::<Token![:]>()?;
-                let bitlen = input.parse::<LitInt>()?;
+                let bitlen = input.parse::<Val>()?;
 
                 input.parse::<Token![>]>()?;
 
@@ -202,7 +237,9 @@ impl Parse for UnPackItemList {
 fn unpack_(input: TokenStream, lsb: bool) -> TokenStream {
     let UnPackItemList(item_list) = parse_macro_input!(input as UnPackItemList);
 
-    let mut ts = quote! {};
+    let mut ts = quote! {
+        #[allow(unused_braces)]
+    };
 
     let func_name;
 
@@ -222,19 +259,21 @@ fn unpack_(input: TokenStream, lsb: bool) -> TokenStream {
                 let tmpvar = format_ident!("_tmp_{}", varname);
 
                 ts.extend(quote! {
+                    let _bitlen = #bitlen;
+
                     #[allow(non_snake_case)]
                     let #tmpvar = Unpack::#func_name(
-                        &#target, _lensum + 1..=_lensum + #bitlen
+                        &#target, _lensum + 1..=_lensum + _bitlen
                     );
                 });
 
                 match vartype {
-                    // >=1 true, == 0 false
+                    // !=0 true, ==0 false
                     Type::Path(type_path) if type_path.path.is_ident("bool") => {
                         ts.extend(quote! {
                             #[allow(mut_unused)]
                             #[allow(non_snake_case)]
-                            let mut #varname = #tmpvar >= 1;
+                            let mut #varname = #tmpvar != 0;
                         });
                     }
                     _ => {
@@ -248,7 +287,7 @@ fn unpack_(input: TokenStream, lsb: bool) -> TokenStream {
             }
 
             ts.extend(quote! {
-                _lensum += #bitlen;
+                _lensum += _bitlen;
             });
         }
     }
@@ -296,12 +335,16 @@ fn pack_item_addassign(target: Ident, vars: Vec<PackVar>, lsb: bool) -> proc_mac
 
     for PackVar(val, bitlen) in vars {
         ts.extend(quote! {
+            let _val = #val;
+            let _bitlen = #bitlen;
+
             Pack::#func_name(
                 &mut #target,
-                #val,
-                _lensum + 1..=_lensum + #bitlen
+                _val,
+                _lensum + 1..=_lensum + _bitlen
             );
-            _lensum += #bitlen;
+
+            _lensum += _bitlen;
         });
     }
 
